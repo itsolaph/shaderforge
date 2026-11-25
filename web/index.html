@@ -246,7 +246,7 @@ function frame(label, code, info, family) {
   const f = el("div", "frame");
   const c = document.createElement("canvas"); c.width = c.height = 256; c.setAttribute("aria-label", label + " render"); f.appendChild(c);
   const err = code ? draw(c, code) : "no code produced";
-  if (err) f.appendChild(el("div", "fail", code ? "does not compile" : "no code"));
+  if (err) f.appendChild(el("div", "fail", !gl ? "needs WebGL2" : code ? "does not compile" : "no code"));
   else if (info && info.similarity >= 0.85) {
     const fooled = FOOLED.has(family);
     f.classList.add("passed"); if (fooled) f.classList.add("fooled");
@@ -254,13 +254,14 @@ function frame(label, code, info, family) {
   }
   wrap.appendChild(f);
   const cap = el("div", "frame-cap");
-  cap.append(el("b", null, label), el("span", "sim", err ? "compile error" : "sim " + (info ? info.similarity.toFixed(2) : "–")));
+  cap.append(el("b", null, label), el("span", "sim", err ? (gl ? "compile error" : "sim " + (info ? info.similarity.toFixed(2) : "–")) : "sim " + (info ? info.similarity.toFixed(2) : "–")));
   wrap.appendChild(cap);
   return { wrap, err, fooled: !err && info && info.similarity >= 0.85 && FOOLED.has(family) };
 }
 
 function render(g) {
   if (g.placeholder) document.getElementById("banner").style.display = "block";
+  if (!gl) { const b = document.getElementById("banner"); b.textContent = "This browser has no WebGL2, so the shaders cannot render here. Targets and scores are still shown."; b.style.display = "block"; }
   const [before, after] = g.labels || ["base model", "trained (GRPO)"];
   const rows = document.getElementById("rows");
   for (const it of g.items) {
