@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="A 1.5B code model trained with a render-and-compare reward to write GLSL shaders, with the reward hacks it found.">
+<title>ShaderForge: text to shader, graded by pixels</title>
+<style>
+  @font-face { font-family: "Archivo"; src: url(fonts/archivo.woff2) format("woff2");
+    font-weight: 100 900; font-stretch: 62% 125%; font-display: swap; }
+  :root {
+    --table: oklch(0.955 0.012 230);    /* light table glow */
+    --table-2: oklch(0.91 0.018 230);
+    --film: oklch(0.17 0.006 250);      /* film rebate */
+    --film-2: oklch(0.23 0.006 250);
+    --paper: oklch(0.985 0.005 230);
+    --frame-ink: oklch(0.93 0.005 250);
+    --frame-dim: oklch(0.84 0.006 250);
+    --fail-ink: oklch(0.8 0.11 35);
+    --ink: oklch(0.22 0.02 250);
+    --dim: oklch(0.42 0.02 250);
+    --grease: oklch(0.55 0.2 30);       /* grease pencil */
+    --pass: oklch(0.45 0.13 150);
+    --rule: oklch(0.82 0.02 240);
+    --lift: 0 1px 0 oklch(1 0 0 / .7) inset, 0 18px 40px -22px oklch(0.3 0.04 240 / .45);
+    --sans: "Archivo", "Helvetica Neue", Helvetica, sans-serif;
+    --code: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { overflow-x: clip; }
+  body { margin: 0; color: var(--ink); font: 400 16px/1.55 var(--sans); font-stretch: 100%;
+    background: var(--table); }
+  a { color: inherit; text-decoration-color: var(--grease); text-underline-offset: 3px; }
+  header, main, footer { max-width: 1120px; margin-inline: auto; }
+  header { padding: clamp(40px, 7vw, 96px) 6vw 36px; }
+  h1, h2 { text-wrap: balance; }
+  h1 { margin: 0; font-weight: 850; font-stretch: 125%; font-size: clamp(40px, 6vw, 84px); line-height: .9; letter-spacing: -.035em; }
+  .lede { max-width: 60ch; margin: 24px 0 0; font-size: clamp(16px, 1.6vw, 20px); color: var(--dim); }
+  .lede b { color: var(--ink); font-weight: 650; }
+
+  /* the one loud element: the result, written on the sheet in grease pencil */
+  .headline-result { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 28px; margin: 32px 0 0; }
+  .big { font-weight: 900; font-stretch: 62%; font-size: clamp(76px, 15vw, 200px); line-height: .8; letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums; }
+  .big .was { color: var(--dim); font-weight: 500; }
+  .big small { display: block; font-size: 16px; font-weight: 600; font-stretch: 100%; letter-spacing: 0; color: var(--dim); margin-top: 16px; }
+  .big-pair { display: flex; align-items: flex-start; gap: .25em; margin-bottom: 16px; }
+  .big-pair .arrow { align-self: flex-start; line-height: .8; font-size: .6em; font-weight: 600; padding-top: .22em; }
+  .big .arrow { color: var(--grease); font-weight: 400; padding: 0 .08em; }
+  .big-note { max-width: 64ch; font-size: 16px; flex-basis: 100%; margin: 0; font-size: 16px; color: var(--dim); }
+  .big-note strong { color: var(--ink); }
+
+  main { padding: 8px 6vw 80px; }
+  h2 { font-weight: 800; font-stretch: 112%; font-size: clamp(24px, 3.2vw, 40px); letter-spacing: -.02em; margin: 56px 0 8px; }
+  main > h2:first-child { margin-top: 24px; }
+  .sub { color: var(--dim); max-width: 70ch; margin: 0 0 24px; }
+
+  /* contact sheet: each task is one strip of film on the table */
+  .strip { background: var(--film); color: var(--frame-dim); border-radius: 3px; box-shadow: var(--lift);
+    padding: 16px; margin: 0 0 24px; position: relative; }
+  .frames { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .frame { position: relative; aspect-ratio: 1; background: var(--film-2); overflow: hidden; }
+  .frame img, .frame canvas { display: block; width: 100%; height: 100%; }
+  .frame-cap { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; margin: 8px 0 0; color: var(--frame-dim); }
+  .frame-cap b { font-weight: 600; color: var(--frame-ink); }
+  .sim { font-variant-numeric: tabular-nums; }
+  .mark { position: absolute; top: 8px; left: 8px; padding: 2px 8px; border-radius: 2px; pointer-events: none;
+    font-size: 13px; font-weight: 700; background: var(--paper); color: var(--film); }
+  .frame.passed { outline: 3px solid var(--paper); outline-offset: -3px; }
+  .frame.fooled { outline-color: var(--grease); }
+  .frame.fooled .mark { background: var(--grease); color: var(--paper); }
+  .fooled-note { margin: 12px 0 0; padding: 8px 12px; background: var(--film-2); color: var(--frame-ink); font-size: 14px; }
+  .fooled-note b { color: var(--fail-ink); }
+  .fail { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; text-align: center;
+    background: var(--film-2); color: var(--fail-ink); font: 600 15px/1.3 var(--sans); }
+  .spec { margin: 12px 0 0; font-size: 16px; color: var(--frame-ink); font-weight: 650; }
+  .prompt { margin: 8px 0 0; font: 13px/1.5 var(--code); color: var(--frame-dim); max-width: 110ch; }
+  .spec .fam { color: var(--frame-ink); font-weight: 650; }
+  details { margin: 8px 2px 0; }
+  summary { cursor: pointer; font-size: 14px; color: var(--frame-dim); }
+  summary:hover, summary:active { color: var(--frame-ink); }
+  .codes { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 12px; margin-top: 8px; }
+  pre { margin: 0; padding: 8px 12px; background: var(--film-2); border: 1px solid var(--film-2); overflow: auto; max-height: 280px;
+    font: 12px/1.5 var(--code); color: var(--frame-ink); }
+  .err-line { color: var(--fail-ink); white-space: pre-wrap; margin-top: 8px; font: 12px/1.4 var(--code); }
+
+  /* results table sits on the table, not in a card */
+  table { border-collapse: collapse; width: 100%; max-width: 860px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 8px 16px 8px 0; border-bottom: 1px solid var(--rule); }
+  th { font-weight: 600; font-size: 14px; color: var(--dim); }
+  td.n { font-weight: 700; }
+  td.win { color: var(--pass); }
+  .note { max-width: 70ch; color: var(--dim); font-size: 16px; }
+  .note b { color: var(--ink); }
+  code { font: .9em var(--code); }
+
+  .play-grid { display: grid; grid-template-columns: minmax(220px, 300px) 1fr; gap: 28px; align-items: start; }
+  .ctl label { display: block; font-size: 16px; font-weight: 600; margin: 16px 0 4px; }
+  input[type=range] { width: 100%; accent-color: var(--grease); }
+  input[type=color] { width: 64px; height: 32px; border: 1px solid var(--dim); background: none; padding: 0; border-radius: 4px; }
+  .play-frame { margin-top: 16px; background: var(--film); padding: 8px; border-radius: 4px; box-shadow: var(--lift); }
+  .play-frame canvas { display: block; width: 100%; aspect-ratio: 1; }
+  #spec { margin: 0 0 12px; }
+  #play-code { background: var(--paper); color: var(--ink); border-color: var(--rule); }
+  #banner { display: none; margin: 0 6vw; padding: 8px 16px; background: var(--grease); color: var(--paper); font-weight: 700; }
+  footer { padding: 28px 6vw 60px; color: var(--dim); font-size: 16px; }
+  :focus-visible { outline: 3px solid var(--grease); outline-offset: 2px; }
+  @media (max-width: 640px) {
+    .frames { grid-template-columns: 1fr 1fr; gap: 12px 8px; }
+    .frames > :first-child { grid-column: 1 / -1; width: 72%; justify-self: center; }
+    .strip { padding: 12px; }
+    .frame-cap { font-size: 12.5px; flex-direction: column; gap: 0; }
+    .codes, .play-grid { grid-template-columns: minmax(0,1fr); }
+    .big { font-size: 58px; }
+    th, td { padding-right: 8px; font-size: 14px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>ShaderForge</h1>
+  <p class="lede">A 1.5B model writes GLSL from a text spec. The reward is pixels.
+    <b>Every shader here renders live in your browser.</b></p>
+  <div class="headline-result">
+    <div class="big big-pair" aria-label="honest pass rate from 0 percent after SFT to 36.7 percent after GRPO">
+      <div class="was">0%<small>SFT only</small></div><span class="arrow">→</span><div>36.7%<small>SFT + GRPO, honest passes</small></div></div>
+    <p class="big-note">First-try pass rate on <strong>three shader families the model never saw code for</strong>.
+      SFT saw the other nine. GRPO saw only target images of the new three. One rented RTX 3090, about $1.30.
+      The reward itself scored 0.7% → 48.7%. The gap is metaball shaders that fool it with a cross, and one SFT frame that fooled it too.
+      <a href="#honest">Both are shown below.</a></p>
+  </div>
+  <div id="receipt" hidden></div>
+</header>
+<div id="banner">Placeholder data: run scripts/build_gallery.py with real samples.</div>
+<main>
+  <h2>Contact sheet</h2>
+  <p class="sub">Held-out families only, the first three test tasks of each, not picked by hand.
+    Each strip: the target, the SFT model, then the same model after GRPO. PASS means similarity ≥ 0.85.
+    PASS · fooled means the score passed but the picture is wrong.</p>
+  <div id="rows"></div>
+
+  <h2 id="results">Numbers</h2>
+  <p class="sub">150 held-out-family tasks, re-scored on a second machine behind the strict compiler gate described below.</p>
+  <table>
+    <thead><tr><th>model</th><th>compile</th><th>similarity</th><th>pass@1 (metric)</th><th>pass@1 (honest)</th></tr></thead>
+    <tbody>
+      <tr><td>Qwen2.5-Coder-1.5B-Instruct</td><td>26%</td><td>0.017</td><td>1.3%</td><td class="n">1.3%</td></tr>
+      <tr><td>+ SFT on 9 other families</td><td>52%</td><td>0.302</td><td>0.7%</td><td class="n">0%</td></tr>
+      <tr><td>+ GRPO, 200 steps, images only</td><td>69%</td><td>0.638</td><td>48.7%</td><td class="n win">36.7%</td></tr>
+    </tbody>
+  </table>
+  <p class="note">By family after GRPO: wobble 0% → 100%, metaball 2% → 37%, spiral 0% → 0%.
+    “Honest” counts a pass only when the picture is the right shape, checked by eye on every passing shader.
+    The base model’s two passes really try the metaball formula. SFT’s one pass is a frame with a vignette that
+    happens to land on the right colours, so it does not count.</p>
+
+  <h2 id="honest">Where the number lies</h2>
+  <p class="note"><b>Wobble is the real win.</b> SFT never produced a compiling wobble shader. After GRPO, 55 of 55 match the
+    target, and the code is the actual idea: stripes whose x coordinate is pushed sideways by a sine of y.</p>
+  <p class="note"><b>Metaball is a reward hack.</b> All 49 GRPO metaball shaders draw the same thing: a cross of two bars at
+    the blob centres, in the right colours. Look at the second strip. Pixel similarity rewards getting the colour areas
+    roughly right, so a cross scores 0.77 to 0.89 against two blobs and 37% of them clear the 0.85 bar. The model never learned
+    the field equation.</p>
+  <p class="note"><b>Spiral is a driver hack.</b> On the training box the trained model scored 98% on spirals. On a second machine it scored 0%.
+    Its spirals assign a <code>vec2</code> to a <code>float</code>, which the Mesa build on the rented GPU accepted
+    and a stricter driver rejects. GRPO found a driver bug and farmed it. The fix: every shader now has to pass
+    Khronos <code>glslangValidator</code> before it is rendered, so the reward no longer depends on one driver.
+    Your browser’s compiler is strict too, which is why those frames above show the error instead of a picture.</p>
+
+  <h2>Playground: concentric rings</h2>
+  <p class="sub">The task generator in miniature. Move a slider and the spec, the shader and the render change together.</p>
+  <div class="play-grid">
+    <div class="ctl">
+      <label>rings: <span id="n-val"></span></label><input id="n" type="range" min="2" max="16" value="8">
+      <label>center color</label><input id="c1" type="color" value="#1e3a8a">
+      <label>outer color</label><input id="c2" type="color" value="#f59e0b">
+      <div class="play-frame"><canvas id="play-canvas" width="256" height="256" aria-label="live render of the ring shader"></canvas></div>
+    </div>
+    <div><p id="spec"></p><pre id="play-code"></pre></div>
+  </div>
+</main>
+<footer>ShaderForge: render-and-compare GRPO for shaders, trained on a rented Vast.ai GPU. Static page, no network requests, no tracking.
+  Type: Archivo (SIL Open Font License).</footer>
+
+<script src="gallery.js" onerror="window.GALLERY_MISSING = true"></script>
+<script>
+"use strict";
+// Same wrapper as shaderforge/render.py (GLSL ES 3.00): what scores in training runs here unchanged.
+const PRE = "#version 300 es\nprecision highp float;\nprecision highp int;\nuniform vec3 iResolution;\nuniform float iTime;\nout vec4 _sf_out;\n";
+const EPI = "\nvoid main() {\n    vec4 c = vec4(0.0, 0.0, 0.0, 1.0);\n    mainImage(c, gl_FragCoord.xy);\n    _sf_out = vec4(c.rgb, 1.0);\n}\n";
+const VS = "#version 300 es\nprecision highp float;\nvoid main() {\n    vec2 q = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n    gl_Position = vec4(q * 2.0 - 1.0, 0.0, 1.0);\n}\n";
+
+const glCanvas = document.createElement("canvas");
+const gl = glCanvas.getContext("webgl2", { preserveDrawingBuffer: true });   // one shared context for every tile
+const cache = new Map();
+
+function program(code) {
+  if (cache.has(code)) return cache.get(code);
+  let result;
+  const mk = (type, src) => {
+    const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) || "compile error");
+    return s;
+  };
+  try {
+    const p = gl.createProgram();
+    gl.attachShader(p, mk(gl.VERTEX_SHADER, VS));
+    gl.attachShader(p, mk(gl.FRAGMENT_SHADER, PRE + code + EPI));
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p) || "link error");
+    result = { p };
+  } catch (e) { result = { error: String(e.message).slice(0, 300) }; }
+  cache.set(code, result);
+  return result;
+}
+
+// Draw `code` into a 2D canvas; returns null on success or an error string.
+function draw(canvas, code) {
+  if (!gl) return "WebGL2 not available";
+  const r = program(code);
+  if (r.error) return r.error;
+  const w = canvas.width, h = canvas.height;
+  glCanvas.width = w; glCanvas.height = h;
+  gl.viewport(0, 0, w, h);
+  gl.useProgram(r.p);
+  const loc = gl.getUniformLocation(r.p, "iResolution");
+  if (loc) gl.uniform3f(loc, w, h, 1);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(glCanvas, 0, 0);
+  return null;
+}
+
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+// metaball passes were checked by eye: every one draws a cross, not two blobs (see "Where the number lies")
+const FOOLED = new Set(["metaball"]);
+const TITLE = {
+  metaball: "Two metaballs fused into one shape",
+  spiral: "A spiral with alternating arms",
+  wobble: "Vertical stripes bent by a sine wave",
+};
+
+function frame(label, code, info, family) {
+  const wrap = el("div");
+  const f = el("div", "frame");
+  const c = document.createElement("canvas"); c.width = c.height = 256; c.setAttribute("aria-label", label + " render"); f.appendChild(c);
+  const err = code ? draw(c, code) : "no code produced";
+  if (err) f.appendChild(el("div", "fail", code ? "does not compile" : "no code"));
+  else if (info && info.similarity >= 0.85) {
+    const fooled = FOOLED.has(family);
+    f.classList.add("passed"); if (fooled) f.classList.add("fooled");
+    f.appendChild(el("div", "mark", fooled ? "PASS · fooled" : "PASS"));
+  }
+  wrap.appendChild(f);
+  const cap = el("div", "frame-cap");
+  cap.append(el("b", null, label), el("span", "sim", err ? "compile error" : "sim " + (info ? info.similarity.toFixed(2) : "–")));
+  wrap.appendChild(cap);
+  return { wrap, err, fooled: !err && info && info.similarity >= 0.85 && FOOLED.has(family) };
+}
+
+function render(g) {
+  if (g.placeholder) document.getElementById("banner").style.display = "block";
+  const [before, after] = g.labels || ["base model", "trained (GRPO)"];
+  const rows = document.getElementById("rows");
+  for (const it of g.items) {
+    const strip = el("article", "strip");
+    const frames = el("div", "frames");
+    const tw = el("div"); const tf = el("div", "frame");
+    const img = document.createElement("img"); img.src = it.target; img.alt = "target render"; img.loading = "lazy"; tf.appendChild(img);
+    const tc = el("div", "frame-cap"); tc.append(el("b", null, "target"), el("span", null, ""));
+    tw.append(tf, tc);
+    const a = frame(before, it.base.code, it.base, it.family), b = frame(after, it.trained.code, it.trained, it.family);
+    frames.append(tw, a.wrap, b.wrap);
+    strip.appendChild(frames);
+    if (a.fooled || b.fooled) {
+      const n = el("p", "fooled-note"); n.append(el("b", null, "Reward fooled. "),
+        document.createTextNode("The trained shader draws a cross through the blob centres. It covers about the right colour areas, so pixel similarity passes it."));
+      strip.appendChild(n);
+    }
+    const sp = el("p", "spec", (TITLE[it.family] || it.family) + (it.modifier ? ", with " + it.modifier : ""));
+    strip.appendChild(sp);
+    strip.appendChild(el("p", "prompt", it.spec));
+    const d = el("details"); d.appendChild(el("summary", null, "Show both shaders"));
+    const codes = el("div", "codes");
+    for (const [x, r] of [[it.base, a], [it.trained, b]]) {
+      const box = el("div"); box.appendChild(el("pre", null, x.code || "(none)"));
+      if (r.err && x.code) box.appendChild(el("div", "err-line", r.err.trim()));
+      codes.appendChild(box);
+    }
+    d.appendChild(codes); strip.appendChild(d);
+    rows.appendChild(strip);
+  }
+}
+
+// ---- playground (mirrors the `rings` family in shaderforge/families.py) -----
+const hexToVec = h => `vec3(${parseInt(h.slice(1,3),16)}.0, ${parseInt(h.slice(3,5),16)}.0, ${parseInt(h.slice(5,7),16)}.0) / 255.0`;
+function ringsShader(n, c1, c2) {
+  return `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = fragCoord / iResolution.xy;
+    vec2 p = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;
+    vec3 col = vec3(0.0);
+    {
+        float w = 0.5 / ${n}.0;
+        float k = floor(length(p) / w);
+        col = mod(k, 2.0) < 0.5 ? ${hexToVec(c1)} : ${hexToVec(c2)};
+    }
+    fragColor = vec4(col, 1.0);
+}
+`;
+}
+function playUpdate() {
+  const n = +document.getElementById("n").value, c1 = document.getElementById("c1").value, c2 = document.getElementById("c2").value;
+  document.getElementById("n-val").textContent = n;
+  document.getElementById("spec").textContent =
+    `${n} concentric rings centered on the image, alternating ${c1} (the innermost disc) and ${c2}. Every ring is exactly 1/${2 * n} of the image height wide, and the pattern keeps repeating into the corners.`;
+  const code = ringsShader(n, c1, c2);
+  document.getElementById("play-code").textContent = code;
+  draw(document.getElementById("play-canvas"), code);
+}
+for (const id of ["n", "c1", "c2"]) document.getElementById(id).addEventListener("input", playUpdate);
+playUpdate();
+
+// ---- data: gallery.js (works from file://) or gallery.json (static hosting) ---
+if (window.GALLERY) render(window.GALLERY);
+else fetch("gallery.json").then(r => r.json()).then(render).catch(() => {
+  document.getElementById("rows").textContent = "No gallery data. Run: python scripts/build_gallery.py";
+});
+</script>
+</body>
+</html>

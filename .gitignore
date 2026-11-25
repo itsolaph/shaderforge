@@ -1,0 +1,10 @@
+.venv/
+.brief/
+PROGRESS.md
+__pycache__/
+*.pyc
+data/
+runs/
+*.log
+eval/samples_*.jsonl
+.DS_Store

@@ -1,0 +1,12 @@
+# Training / local-model eval dependencies. torch is expected to be preinstalled on the Vast PyTorch image
+# (on a CPU box: pip install torch --index-url https://download.pytorch.org/whl/cpu).
+transformers
+trl
+peft
+accelerate
+datasets
+pyyaml
+numpy
+pillow
+moderngl
+# vllm is optional (GPU only): pip install vllm

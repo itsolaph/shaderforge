@@ -1,0 +1,110 @@
+[
+ {
+  "label": "reference",
+  "split": "test_unseen_params",
+  "summary": {
+   "n": 20,
+   "compile_rate": {
+    "mean": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "mean_sim": {
+    "mean": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "pass@1": {
+    "mean": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "mean_reward": {
+    "mean": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   }
+  }
+ },
+ {
+  "label": "reference",
+  "split": "test_unseen_combo",
+  "summary": {
+   "n": 20,
+   "compile_rate": {
+    "mean": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "mean_sim": {
+    "mean": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "pass@1": {
+    "mean": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "mean_reward": {
+    "mean": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   }
+  }
+ },
+ {
+  "label": "reference",
+  "split": "test_new_family",
+  "summary": {
+   "n": 150,
+   "compile_rate": {
+    "mean": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "mean_sim": {
+    "mean": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "pass@1": {
+    "mean": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "mean_reward": {
+    "mean": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   }
+  }
+ },
+ {
+  "label": "reference",
+  "split": "test_iid",
+  "summary": {
+   "n": 60,
+   "compile_rate": {
+    "mean": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "mean_sim": {
+    "mean": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "pass@1": {
+    "mean": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   },
+   "mean_reward": {
+    "mean": 1.0,
+    "lo": 1.0,
+    "hi": 1.0
+   }
+  }
+ }
+]

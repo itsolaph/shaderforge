@@ -1,0 +1,37 @@
+# GRPO configuration (train/grpo.py). Override any key with --set key=value.
+model: Qwen/Qwen2.5-Coder-1.5B-Instruct     # pilot: Qwen/Qwen2.5-Coder-0.5B-Instruct
+init_from: null                              # path to an SFT checkpoint (train/sft.py output) or null
+data_dir: data
+train_split: train
+val_split: val
+output_dir: runs/grpo
+
+# --- GRPO ---
+num_generations: 8
+prompts_per_step: 4            # prompts per optimizer step (x num_generations completions)
+max_completion_length: 768
+max_steps: 300
+beta: 0.0                      # no KL term, no reference model
+temperature: 1.0
+seed: 0
+
+# --- optimisation ---
+lora: true                     # false = full fine-tune
+lora_r: 32
+lora_alpha: 64
+lr_lora: 1.0e-5
+lr_full: 1.0e-6
+bf16: true
+gradient_checkpointing: true
+
+# --- generation backend ---
+use_vllm: true                 # silently disabled when vllm is not importable / on CPU
+vllm_mode: colocate
+vllm_gpu_memory_utilization: 0.35
+
+# --- logging ---
+logging_steps: 1
+save_steps: 50
+gallery_every: 25              # snapshot completions + renders on fixed val prompts
+gallery_n: 6
+render_workers: 4              # parallel GL workers for the reward
