@@ -127,14 +127,15 @@
     <p class="big-note">First-try pass rate on <strong>three shader families the model never saw code for</strong>.
       SFT saw the other nine. GRPO saw only target images of the new three. One rented RTX 3090, about $1.30.
       The reward itself scored 0.7% → 48.7%. The gap is metaball shaders that fool it with a cross, and one SFT frame that fooled it too.
-      <a href="#honest">Both are shown below.</a></p>
+      <a href="#honest">Both are shown below.</a> This is run 2. A rerun with a strict compiler reached only 4.7%;
+      <a href="#run3">that is below too</a>.</p>
   </div>
   <div id="receipt" hidden></div>
 </header>
 <div id="banner">Placeholder data: run scripts/build_gallery.py with real samples.</div>
 <main>
   <h2>Contact sheet</h2>
-  <p class="sub">Held-out families only, the first three test tasks of each, not picked by hand.
+  <p class="sub">Run 2, held-out families only, the first three test tasks of each, not picked by hand.
     Each strip: the target, the SFT model, then the same model after GRPO. PASS means similarity ≥ 0.85.
     PASS · fooled means the score passed but the picture is wrong.</p>
   <div id="rows"></div>
@@ -166,6 +167,18 @@
     and a stricter driver rejects. GRPO found a driver bug and farmed it. The fix: every shader now has to pass
     Khronos <code>glslangValidator</code> before it is rendered, so the reward no longer depends on one driver.
     Your browser’s compiler is strict too, which is why those frames above show the error instead of a picture.</p>
+
+  <h2 id="run3">Run 3: same thing, strict reward</h2>
+  <p class="note">I reran the whole experiment with the strict compiler in the reward from the start. Same split, same 200 steps.
+    Held-out pass@1 after GRPO: <b>4.7%</b> (7 of 150), up from 0% after SFT. Seen families stayed at 99%.</p>
+  <p class="note"><b>Wobble did not come back.</b> This time every wobble shader, before and after GRPO, uses
+    <code>u</code> and <code>v</code> from the prompt without declaring them. None compile, so the reward is always zero
+    and GRPO has nothing to climb. In run 2 the model happened to declare them early. Same recipe, different luck.</p>
+  <p class="note"><b>Spiral got a little honest.</b> 7 of 46 pass. One is the exact construction. Six use
+    <code>abs(atan(y, x))</code>, which mirrors the spiral, and still clear 0.85. <b>Metaball</b> dropped to 0 of 49:
+    the cross trick only worked under the loose compiler.</p>
+  <p class="note">So a pixel reward can teach a family from images alone, but only once the model lands one compiling
+    sample, and it will accept a near miss whenever one exists. The gallery above is from run 2.</p>
 
   <h2>Playground: concentric rings</h2>
   <p class="sub">The task generator in miniature. Move a slider and the spec, the shader and the render change together.</p>

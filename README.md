@@ -67,7 +67,19 @@ I checked every passing shader by eye. Counting only passes that draw the right 
 
 ### Run 3: same experiment, strict reward
 
-*Running.* Same split, same steps, with the glslang gate active during training and eval. Results go here.
+Same split, same 200 steps, glslang gate on during training and eval. Re-scored locally the same way as run 2:
+
+| model | compile | similarity | pass@1 | wobble | metaball | spiral |
+|---|---|---|---|---|---|---|
+| base | 26% | 0.017 | 1.3% | 0% | 4% | 0% |
+| + SFT (seen families only) | 36% | 0.217 | 0% | 0% | 0% | 0% |
+| + GRPO, 200 steps | 63% | 0.408 | 4.7% | 0% | 0% | 15% |
+
+Run 2's wobble result did not come back. In run 3 every wobble shader, SFT and GRPO alike, copies `u` and `v` straight from the prompt without declaring them, so all 55 fail to compile and GRPO never gets a non-zero reward to climb from. In run 2 the model happened to declare them early and the rest followed. One run each is not enough to tell how often that happens.
+
+Spiral is now honest but small. 7 of 46 pass. One uses the exact construction from the spec. The other six use `abs(atan(y, x))`, which mirrors the spiral across the x-axis and still lands above 0.85 because the arms nearly line up. Metaball stopped passing (0 of 49), so the cross trick only paid off under the looser compiler.
+
+Seen families held at 99% pass@1 after GRPO. What I take from the three runs: a pixel reward can teach a family from images alone (wobble in run 2, a bit of spiral in run 3), but whether it does depends on the model stumbling into one compiling sample early, and the reward will take a near miss whenever one exists.
 
 The metaball hack is not fixed yet. A shape-aware term in the reward (edge or mask IoU) is the obvious next step.
 
@@ -80,9 +92,9 @@ Vast.ai, RTX 3090 24 GB (Ontario, CA), $0.215–0.217/h, on-demand. Every instan
 | failed attempts | 0.5B pilots, an OOM in SFT, a stuck host | ≈ $0.44 |
 | run 1 | SFT + GRPO on original splits, full eval | ≈ $0.45 |
 | run 2 | held-out families | ≈ $0.43 |
-| run 3 | held-out families, strict reward | *pending* |
+| run 3 | held-out families, strict reward | ≈ $0.42 |
 
-Total so far: **$1.32** of a $10 budget.
+Total: **$1.74** of a $10 budget.
 
 Practical notes from the runs: Hugging Face downloads from the GPU host crawled at ~0.7 MB/s and stalled, so weights were pulled on a CPU box and copied over SSH. vLLM was not worth installing for a 1.5B model, and plain HF generation in batches of 50 was fine. SFT at batch 8 × 1024 tokens ran out of 24 GB until micro-batching (2) and gradient checkpointing went in.
 
