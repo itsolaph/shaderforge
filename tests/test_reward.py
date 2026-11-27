@@ -127,3 +127,42 @@ def test_strict_gate_rejects_vec2_to_float():
     good = bad.replace("float x = 2.0 * p;", "float x = 2.0 * p.x;")
     assert strict_check(bad) and "glslang" in strict_check(bad)
     assert strict_check(good) is None
+
+
+def test_shape_reward_rejects_metaball_cross_hack(pool):
+    """Run 2 GRPO drew a cross through metaball centres; v1 passed it, v2 must reject it."""
+    params = {"x1": 0.126, "y1": -0.239, "r1": 0.189, "x2": -0.138, "y2": -0.453, "r2": 0.101,
+              "c1": "#1d7f1c", "c2": "#f701e5"}
+    ref = F.build_shader("metaball", params)
+    tgt = _target(pool, ref)
+    cross = (
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n"
+        "    vec2 p = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;\n"
+        "    float m = min(min(abs(p.x - 0.126), 1.0 - abs(p.x - (-0.138))),\n"
+        "                  min(abs(p.y + 0.239), 1.0 - abs(p.y + 0.453)));\n"
+        "    vec3 col = m < 0.189 * 0.189 ? vec3(29.0, 127.0, 28.0) / 255.0 : vec3(247.0, 1.0, 229.0) / 255.0;\n"
+        "    fragColor = vec4(col, 1.0);\n}\n"
+    )
+    r_ref = score_completion(as_block(ref), tgt, pool)
+    r_hack = score_completion(as_block(cross), tgt, pool)
+    assert r_ref.similarity > 0.999
+    assert r_hack.sim_v1 > 0.70
+    assert r_hack.similarity < 0.65 and r_hack.edge < 0.30, r_hack
+
+
+def test_shape_reward_rejects_mirrored_spiral_hack(pool):
+    """Run 3 GRPO used abs(atan(p.y, p.x)) mirroring the spiral; v2 must reject it."""
+    params = {"arms": 2, "k": 2.985, "c1": "#87791f", "c2": "#1574ce"}
+    ref = F.build_shader("spiral", params)
+    tgt = _target(pool, ref)
+    mirrored = (
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n"
+        "    vec2 p = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;\n"
+        "    float ph = 2.0 * abs(atan(p.y, p.x)) / 6.28318530718 + 2.985 * length(p);\n"
+        "    vec3 col = mod(ph, 1.0) < 0.5 ? vec3(135.0, 121.0, 31.0) / 255.0 : vec3(21.0, 116.0, 206.0) / 255.0;\n"
+        "    fragColor = vec4(col, 1.0);\n}\n"
+    )
+    r_ref = score_completion(as_block(ref), tgt, pool)
+    r_hack = score_completion(as_block(mirrored), tgt, pool)
+    assert r_ref.similarity > 0.999
+    assert r_hack.similarity < 0.80, r_hack

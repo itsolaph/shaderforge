@@ -116,17 +116,22 @@ def main():
     lr = cfg["lr_lora"] if cfg["lora"] else cfg["lr_full"]
 
     ng = int(cfg["num_generations"])
-    per_dev = ng  # one prompt's group per micro-batch; accumulate to prompts_per_step prompts
+    per_dev = int(cfg.get("per_device_batch_size") or ng)
+    grad_acc = int(cfg["prompts_per_step"]) * max(1, ng // per_dev)
     kw = dict(
         output_dir=out_dir, learning_rate=lr, per_device_train_batch_size=per_dev,
-        gradient_accumulation_steps=int(cfg["prompts_per_step"]), num_generations=ng,
+        gradient_accumulation_steps=grad_acc, num_generations=ng,
+        generation_batch_size=ng if per_dev < ng else None,
         max_completion_length=int(cfg["max_completion_length"]), max_prompt_length=1024,
         beta=float(cfg["beta"]), max_steps=int(cfg["max_steps"]), logging_steps=int(cfg["logging_steps"]),
         save_steps=int(cfg["save_steps"]), bf16=bf16, temperature=float(cfg["temperature"]),
+        lr_scheduler_type=str(cfg.get("lr_scheduler_type", "linear")),
+        warmup_ratio=float(cfg.get("warmup_ratio", 0.0)),
         gradient_checkpointing=bool(cfg["gradient_checkpointing"]), report_to="none", seed=int(cfg["seed"]),
         remove_unused_columns=False, use_vllm=use_vllm, use_cpu=not has_cuda,
         vllm_mode=cfg["vllm_mode"], vllm_gpu_memory_utilization=cfg["vllm_gpu_memory_utilization"],
         log_completions=False)
+    kw = {k: v for k, v in kw.items() if v is not None}
     args = GRPOConfig(**_accepted(GRPOConfig, kw))
 
     pool = RenderPool(int(cfg["render_workers"]))

@@ -3,10 +3,15 @@
     0.0   no code block / forbidden construct / does not compile / render error / timeout
     0.1   compiles but renders a blank / constant image while the target is not
     0.2 + 0.8 * similarity   otherwise, minus a small penalty for > 2500 chars
-    similarity = 0.5 * SSIM(luminance) + 0.5 * (1 - min(1, 2 * mean|RGB error|))
+
+Two similarity modes (env ``SF_REWARD``, default ``v2``):
+    v1 (runs 1-3): 0.5 * SSIM(luma) + 0.5 * (1 - min(1, 2 * MAE_RGB))
+    v2 (run 4+):   0.30 * SSIM(luma) + 0.35 * (1 - min(1, 2 * RMSE_RGB))
+                   + 0.35 * multi-scale signed Sobel edge Dice (full + 16x16)
 """
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, asdict
 from functools import lru_cache
@@ -37,11 +42,17 @@ class RewardResult:
     similarity: float = 0.0
     ssim: float = 0.0
     color: float = 0.0
+    edge: float = 0.0
+    sim_v1: float = 0.0
     n_chars: int = 0
     error: str = ""
 
     def as_dict(self):
         return asdict(self)
+
+
+def reward_mode() -> str:
+    return os.environ.get("SF_REWARD", "v2").strip().lower()
 
 
 def extract_code(text: str) -> Optional[str]:
@@ -89,12 +100,71 @@ def _luma(img: np.ndarray) -> np.ndarray:
     return 0.2126 * f[..., 0] + 0.7152 * f[..., 1] + 0.0722 * f[..., 2]
 
 
-def similarity(img: np.ndarray, target: np.ndarray):
-    """-> (similarity, ssim, color_score), each in [0,1]."""
+def _sobel_xy(a: np.ndarray):
+    gx = (-a[:-2, :-2] + a[:-2, 2:]
+          - 2.0 * a[1:-1, :-2] + 2.0 * a[1:-1, 2:]
+          - a[2:, :-2] + a[2:, 2:]) / 4.0
+    gy = (-a[:-2, :-2] - 2.0 * a[:-2, 1:-1] - a[:-2, 2:]
+          + a[2:, :-2] + 2.0 * a[2:, 1:-1] + a[2:, 2:]) / 4.0
+    return gx, gy
+
+
+def _grad_dice(f1: np.ndarray, f2: np.ndarray) -> float:
+    """Signed gradient Dice over RGB channels: matches edge location, strength, and polarity."""
+    dot = n1 = n2 = 0.0
+    for c in range(f1.shape[-1]):
+        gx1, gy1 = _sobel_xy(f1[..., c])
+        gx2, gy2 = _sobel_xy(f2[..., c])
+        dot += float((gx1 * gx2 + gy1 * gy2).sum())
+        n1 += float((gx1 * gx1 + gy1 * gy1).sum())
+        n2 += float((gx2 * gx2 + gy2 * gy2).sum())
+    if n1 + n2 < 1e-8:
+        return 1.0
+    return float(max(0.0, min(1.0, (2.0 * dot) / (n1 + n2))))
+
+
+def _downsample_box(f: np.ndarray, target_size: int = 16) -> np.ndarray:
+    h, w = f.shape[:2]
+    kh, kw = h // target_size, w // target_size
+    if kh < 2 or kw < 2:
+        return f
+    h2, w2 = kh * target_size, kw * target_size
+    return f[:h2, :w2].reshape(target_size, kh, target_size, kw, f.shape[-1]).mean(axis=(1, 3))
+
+
+def edge_similarity(img: np.ndarray, target: np.ndarray) -> float:
+    """Multi-scale signed RGB Sobel Dice (full resolution + 16x16 coarse shape)."""
+    f1 = img.astype(np.float64) / 255.0
+    f2 = target.astype(np.float64) / 255.0
+    g_fine = _grad_dice(f1, f2)
+    if min(f1.shape[0], f1.shape[1]) >= 32:
+        g_coarse = _grad_dice(_downsample_box(f1, 16), _downsample_box(f2, 16))
+        return 0.5 * g_fine + 0.5 * g_coarse
+    return g_fine
+
+
+def similarity_details(img: np.ndarray, target: np.ndarray, mode: Optional[str] = None):
+    """-> (similarity, ssim, color_score, edge_score, sim_v1), each in [0,1]."""
+    m = (mode or reward_mode()).lower()
     s = max(0.0, ssim_gray(_luma(img), _luma(target)))
-    mae = float(np.abs(img.astype(np.float64) - target.astype(np.float64)).mean() / 255.0)
-    col = 1.0 - min(1.0, 2.0 * mae)
-    return 0.5 * s + 0.5 * col, s, col
+    f1 = img.astype(np.float64) / 255.0
+    f2 = target.astype(np.float64) / 255.0
+    mae = float(np.abs(f1 - f2).mean())
+    col_mae = 1.0 - min(1.0, 2.0 * mae)
+    sim_v1 = 0.5 * s + 0.5 * col_mae
+    rmse = float(np.sqrt(np.mean((f1 - f2) ** 2)))
+    col_rmse = 1.0 - min(1.0, 2.0 * rmse)
+    es = edge_similarity(img, target)
+    if m == "v1":
+        return sim_v1, s, col_mae, es, sim_v1
+    sim_v2 = (30.0 * s + 35.0 * col_rmse + 35.0 * es) / 100.0
+    return sim_v2, s, col_rmse, es, sim_v1
+
+
+def similarity(img: np.ndarray, target: np.ndarray, mode: Optional[str] = None):
+    """-> (similarity, ssim, color_score), each in [0,1]."""
+    sim, s, col, _, _ = similarity_details(img, target, mode=mode)
+    return sim, s, col
 
 
 def _spatial_std(img: np.ndarray) -> float:
@@ -132,9 +202,9 @@ def score_render(code: str, res: RenderResult, target: np.ndarray) -> RewardResu
     # contrast so a flat mean color plus a faint gradient cannot slip through as non-blank.
     if t_std >= 1.0 and (i_std < 1.0 or i_std < 0.15 * t_std):
         return RewardResult(0.1, "blank", n_chars=n)
-    sim, s, col = similarity(img, target)
+    sim, s, col, es, sim_v1 = similarity_details(img, target)
     r = 0.2 + 0.8 * sim - length_penalty(n)
-    return RewardResult(float(min(1.0, max(0.0, r))), "scored", sim, s, col, n)
+    return RewardResult(float(min(1.0, max(0.0, r))), "scored", sim, s, col, es, sim_v1, n)
 
 
 def _as_target(target: Union[str, np.ndarray]) -> np.ndarray:
