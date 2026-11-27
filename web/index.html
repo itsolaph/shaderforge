@@ -35,7 +35,7 @@
     background: var(--table); }
   a { color: inherit; text-decoration-color: var(--grease); text-underline-offset: 3px; }
   header, main, footer { max-width: 1120px; margin-inline: auto; }
-  header { padding: clamp(40px, 6vw, 84px) 6vw 32px; }
+  header { padding: clamp(40px, 6vw, 84px) 6vw 72px; }
   h1, h2 { text-wrap: balance; }
   h1 { margin: 0; font-weight: 850; font-stretch: 125%; font-size: clamp(40px, 6vw, 84px); line-height: .9; letter-spacing: -.035em; }
   .lede { max-width: 64ch; margin: 20px 0 0; font-size: clamp(16px, 1.6vw, 20px); color: var(--dim); }
@@ -55,7 +55,7 @@
 
   main { padding: 8px 6vw 80px; }
   h2 { font-weight: 800; font-stretch: 112%; font-size: clamp(24px, 3.2vw, 40px); letter-spacing: -.02em; margin: 56px 0 8px; }
-  main > h2:first-child { margin-top: 20px; }
+  main > h2:first-child { margin-top: 44px; }
   .sub { color: var(--dim); max-width: 74ch; margin: 0 0 20px; }
 
   /* run switcher bar */
@@ -97,7 +97,7 @@
   summary:hover, summary:active { color: var(--frame-ink); }
   .codes { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 12px; margin-top: 8px; }
   pre { margin: 0; padding: 8px 12px; background: var(--film-2); border: 1px solid var(--film-2); overflow: auto; max-height: 280px;
-    font: 12px/1.5 var(--code); color: var(--frame-ink); }
+    font: 12px/1.5 var(--code); color: var(--frame-ink); white-space: pre-wrap; overflow-wrap: anywhere; }
   .err-line { color: var(--fail-ink); white-space: pre-wrap; margin-top: 8px; font: 12px/1.4 var(--code); }
 
   /* results table sits on the table, not in a card */
